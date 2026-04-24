@@ -79,11 +79,17 @@ public class ProceduralTrackGenerator : MonoBehaviour
     {
         EnsureCarTransform();
         EnsureTrackTimer();
+        pathPoints.Clear();
+
+        // Bypass for batch training.
+        if (carTransform == null)
+        {
+            carTransform = FindFirstObjectByType<PrometeoCarController>()?.transform;
+        }
 
         if (carTransform == null)
         {
-            Debug.LogWarning("ProceduralTrackGenerator could not find a car with PrometeoCarController in the scene.");
-            return;
+            Debug.LogWarning("No car found, but track generation will continue anyway.");
         }
 
         if (segmentCount < 3)
@@ -141,6 +147,7 @@ public class ProceduralTrackGenerator : MonoBehaviour
         raceFinishPoint = pathPoints[pathPoints.Count - 2];
         raceFinishForward = (pathPoints[pathPoints.Count - 1] - pathPoints[pathPoints.Count - 2]).normalized;
         previousTimingPosition = GetCarPositionForTiming();
+
     }
 
     private void BuildForwardPath()
@@ -634,19 +641,52 @@ public class ProceduralTrackGenerator : MonoBehaviour
         return null;
     }
 
-    // Saves the current track object.
-    private void SaveCurrentTrack()
+    /// <summary>
+    /// Extracts the CURRENT generated track into a clean serializable TrackData object.
+    /// This is used for RL training, dataset generation, and batch saving.
+    /// </summary>
+    public TrackData GetTrackData()
     {
+        // Safety check
+        if (pathPoints == null || pathPoints.Count < 2)
+        {
+            Debug.LogError("GetTrackData failed: pathPoints is empty.");
+            return null;
+        }
+
         TrackData data = new TrackData();
+
+        // Identity
         data.trackName = "Track_" + seed;
         data.seed = seed;
+
+        // Core geometry
         data.points = pathPoints.ToArray();
+
+        // Config parameters (important for RL reproducibility)
         data.segmentCount = segmentCount;
         data.segmentLength = segmentLength;
         data.roadWidth = roadWidth;
         data.difficulty = maxTurnAngle;
 
-        TrackSerializer.SaveTrack(data);
+        // Optional extras (if your TrackData supports them)
+        // data.barrierEnabled = generateBarriers;
+        // data.laneLimit = laneStepLimit;
+
+        return data;
+    }
+
+    // Saves the current track object.
+    private void SaveCurrentTrack()
+    {
+        TrackData data = GetTrackData();
+
+        if (data == null)
+            return;
+
+        //string folder =
+        string folder = Application.dataPath + "/Scenes/GeneratedTracks/";
+        TrackSerializer.SaveTrack(data, folder);
     }
 
     // Loading Tracks

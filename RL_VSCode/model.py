@@ -14,7 +14,6 @@ class PolicyNet(nn.Module):
             nn.ReLU(),
 
             nn.Linear(128, action_dim),
-            nn.Tanh()
         )
 
     def forward(self, x):

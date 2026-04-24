@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class CrashDetector : MonoBehaviour
 {
-    private RewardManager reward;
+    public RewardManager reward;
     public TrackManager manager;
 
     void Start()

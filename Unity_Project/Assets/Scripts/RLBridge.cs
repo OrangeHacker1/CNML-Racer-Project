@@ -2,7 +2,7 @@ using UnityEngine;
 using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
+//using System.Text;
 using System.IO;
 
 public class RLServerBridge : MonoBehaviour
@@ -18,7 +18,13 @@ public class RLServerBridge : MonoBehaviour
     private StreamReader reader;
     private StreamWriter writer;
 
-    public bool Connected => client != null && client.Connected;
+    public bool Connected =>
+        client != null &&
+        client.Connected &&
+        reader != null &&
+        writer != null;
+
+    //public bool Connected => client != null && client.Connected;
 
     private void Awake()
     {
@@ -33,35 +39,86 @@ public class RLServerBridge : MonoBehaviour
 
     public void StartServer()
     {
-        listener = new TcpListener(IPAddress.Any, port);
-        listener.Start();
+        try
+        {
+            listener = new TcpListener(IPAddress.Any, port);
+            listener.Start();
 
-        Debug.Log($"RL Server started on port {port}");
-        listener.BeginAcceptTcpClient(OnClientConnected, null);
+            Debug.Log("RL Server listening on " + port);
+
+            listener.BeginAcceptTcpClient(OnClientConnected, null);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("Server start failed: " + e.Message);
+        }
     }
 
+    // What to do after connection.
     private void OnClientConnected(IAsyncResult ar)
     {
-        client = listener.EndAcceptTcpClient(ar);
+        try
+        {
+            client = listener.EndAcceptTcpClient(ar);
 
-        NetworkStream stream = client.GetStream();
-        reader = new StreamReader(stream);
-        writer = new StreamWriter(stream);
-        writer.AutoFlush = true;
+            NetworkStream stream = client.GetStream();
 
-        Debug.Log("Python trainer connected.");
+            reader = new StreamReader(stream);
+            writer = new StreamWriter(stream);
+            writer.AutoFlush = true;
+
+            Debug.Log("Python connected.");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError(e.Message);
+        }
     }
 
     public void SendState(string json)
     {
         if (!Connected) return;
-        writer.WriteLine(json);
+
+        try
+        {
+            writer.WriteLine(json);
+        }
+        catch 
+        {     
+            Disconnect();
+        }
     }
 
     public string ReceiveAction()
     {
         if (!Connected) return null;
-        return reader.ReadLine();
+        try
+        {
+            if (client.Available <= 0)
+                return null;
+
+            return reader.ReadLine();
+        }
+        catch
+        {
+            Disconnect();
+            return null;
+        }
+    }
+
+    void Disconnect()
+    {
+        reader?.Close();
+        writer?.Close();
+        client?.Close();
+
+        reader = null;
+        writer = null;
+        client = null;
+
+        Debug.Log("Trainer disconnected.");
+
+        listener.BeginAcceptTcpClient(OnClientConnected, null);
     }
 
     private void OnApplicationQuit()

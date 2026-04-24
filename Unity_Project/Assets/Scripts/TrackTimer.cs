@@ -126,7 +126,7 @@ public class TrackTimer : MonoBehaviour
 
         timerText = textObject.AddComponent<Text>();
         timerText.alignment = TextAnchor.UpperLeft;
-        timerText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        timerText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         timerText.fontSize = 16;
         timerText.color = Color.white;
         timerText.horizontalOverflow = HorizontalWrapMode.Overflow;

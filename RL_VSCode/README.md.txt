@@ -1,32 +1,51 @@
-How To Run Everything
+UNITY ↔ PYTHON RL TRAINING BRIDGE
+================================
 
-# Step 1 — Start Python
-cd PythonTrainer (Need to be in the command line.)
-python main.py
+STEP 1 — UNITY SETUP
+--------------------
+1. Open Unity scene
+2. Add RLServerBridge.cs to empty GameObject
+3. Port = 5555
+4. Press Play
 
-You should see:
+STEP 2 — PYTHON SETUP
+---------------------
+Install packages:
 
-Waiting for Unity...
+pip install torch
+python -m pip install torch
 
-# Step 2 — Open Unity Scene
+STEP 3 — TRAIN
+--------------
+Run:
 
-Press Play.
+python train.py
 
-Unity connects automatically.
+Python connects to Unity automatically.
 
-# Step 3 — Watch Car Move
+STEP 4 — EVALUATE
+-----------------
+Run:
 
-The agent now controls the car.
+python evaluate.py
 
-Initially random.
+Loads saved model.
 
-That is expected.
+STEP 5 — CHECKPOINTS
+--------------------
+Models saved to:
 
-# What Happens Each Step
-Unity sends state
-Python predicts action
-Unity executes action
-Repeat
+checkpoints/
+
+STEP 6 — NOTES
+--------------
+Unity must start first.
+Then Python connects.
+
+If disconnected:
+restart Python.
+
+
 
 # Why This Is Powerful
 

@@ -1,12 +1,11 @@
 using UnityEngine;
 using System.IO;
-using UnityEngine;
 
 public static class TrackSerializer
 {
-    public static void SaveTrack(TrackData data)
+    public static void SaveTrack(TrackData data, string folder)
     {
-        string folder = Application.dataPath + "/Scenes/GeneratedTracks/";
+        // string folder = Application.dataPath + "/Scenes/GeneratedTracks/";
 
         if (!Directory.Exists(folder))
             Directory.CreateDirectory(folder);
