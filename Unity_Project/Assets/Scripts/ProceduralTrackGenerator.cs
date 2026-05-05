@@ -336,8 +336,28 @@ public class ProceduralTrackGenerator : MonoBehaviour
         }
     }
 
+    /* OLD
     private void ApplyBarrierSurfaceSettings(GameObject surface)
     {
+        Renderer renderer = surface.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = GetOrCreateBarrierMaterial();
+        }
+
+        Collider collider = surface.GetComponent<Collider>();
+        if (collider != null && roadPhysicsMaterial != null)
+        {
+            collider.sharedMaterial = roadPhysicsMaterial;
+        }
+    } */
+    // NEW
+    private void ApplyBarrierSurfaceSettings(GameObject surface)
+    {
+        // Tag + Layer
+        surface.tag = "Barrier";
+        surface.layer = LayerMask.NameToLayer("Barrier");
+
         Renderer renderer = surface.GetComponent<Renderer>();
         if (renderer != null)
         {

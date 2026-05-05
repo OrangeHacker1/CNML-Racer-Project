@@ -1,7 +1,8 @@
 import socket
 import json
 import time
-from config import HOST, PORT
+import torch
+from config import HOST, PORT, CHECKPOINT_DIR
 
 class UnityClient:
     def __init__(self, retries=20, delay=1):

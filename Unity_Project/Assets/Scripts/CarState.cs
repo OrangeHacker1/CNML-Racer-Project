@@ -17,4 +17,6 @@ public class CarState
     public float distanceTravelled;
     public float timeAlive;
 
+    //public bool newEpisode;
+
 }

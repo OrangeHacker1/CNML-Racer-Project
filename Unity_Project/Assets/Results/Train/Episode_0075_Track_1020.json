@@ -1,0 +1,11 @@
+{
+    "mode": "Train",
+    "trackName": "Track_1020",
+    "episodeIndex": 75,
+    "reward": -0.8353821635246277,
+    "distance": 3.828941583633423,
+    "time": 10.004598617553711,
+    "crashed": false,
+    "finished": false,
+    "seed": 0
+}

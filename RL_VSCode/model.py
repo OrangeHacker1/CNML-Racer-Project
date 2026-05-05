@@ -1,4 +1,7 @@
-# python -m pip install -r requirements.txt
+#
+#   OLD LEGACY
+#
+
 import torch
 import torch.nn as nn
 
@@ -6,15 +9,34 @@ class PolicyNet(nn.Module):
     def __init__(self, state_dim=5, action_dim=3):
         super().__init__()
 
-        self.net = nn.Sequential(
+        self.shared = nn.Sequential(
             nn.Linear(state_dim, 128),
             nn.ReLU(),
-
             nn.Linear(128, 128),
-            nn.ReLU(),
-
-            nn.Linear(128, action_dim),
+            nn.ReLU()
         )
 
+        self.mean = nn.Linear(128, action_dim)
+        self.log_std = nn.Parameter(torch.zeros(action_dim))
+
+        self.value = nn.Linear(128, 1)
+
     def forward(self, x):
-        return self.net(x)
+        features = self.shared(x)
+
+        mean = self.mean(features)
+        std = torch.exp(self.log_std)
+
+        value = self.value(features)
+
+        return mean, std, value
+
+    def act(self, state):
+        mean, std, value = self.forward(state)
+
+        dist = torch.distributions.Normal(mean, std)
+        action = dist.sample()
+
+        log_prob = dist.log_prob(action).sum()
+
+        return action, log_prob, value

@@ -18,6 +18,6 @@ public class CrashDetector : MonoBehaviour
         reward.AddCrashPenalty();
 
         if (manager != null)
-            manager.EndEpisode(false, true);
+            manager.HandleCrash();
     }
 }

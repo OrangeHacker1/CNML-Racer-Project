@@ -381,9 +381,11 @@ MonoBehaviour:
   carRb: {fileID: 1633914722}
   mode: 0
   totalEpisodes: 100
-  episodeTimeout: 10
+  episodeTimeout: 30
   maxCrashesPerTrack: 5
-  maxTracksToRun: 100
+  maxTracksToRun: 10
+  trackDuration: 180
+  maxEpisodesPerTrack: 5
 --- !u!4 &1521487911
 Transform:
   m_ObjectHideFlags: 0
@@ -535,6 +537,14 @@ MonoBehaviour:
   car: {fileID: 1633914726}
   trackManager: {fileID: 1521487910}
   maxEpisodeTime: 30
+  rayCount: 7
+  raySpreadAngle: 90
+  rayLength: 20
+  rayMask:
+    serializedVersion: 2
+    m_Bits: 64
+  trackName: 
+  newTrack: 0
 --- !u!114 &1633914726 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 627556911, guid: 79d0ca8b77e301442afdb49f102e8aed, type: 3}

@@ -18,6 +18,7 @@ public class TrackManager : MonoBehaviour
     public Transform car;
     public Rigidbody carRb;
 
+    // Episode is a run with a car. Every restart is an eppisode. 
     [Header("Experiment")]
     public RunMode mode = RunMode.Train;
     public int totalEpisodes = 100;
@@ -27,6 +28,13 @@ public class TrackManager : MonoBehaviour
     public int maxCrashesPerTrack = 5;
     public int maxTracksToRun = 100;
 
+    [Header("Track Timing (NEW)")]
+    public float trackDuration = 180f;      // seconds per track
+    public int maxEpisodesPerTrack = 5;     // episodes per track
+
+    private float trackTimer = 0f;
+    private int episodesOnTrack = 0;
+
     private int currentEpisode = 0;
     private int tracksUsed = 0;
     private float timer = 0f;
@@ -34,11 +42,17 @@ public class TrackManager : MonoBehaviour
 
     private string[] trackFiles;
     private string currentTrack;
+    private int currentTrackIndex = 0;
 
     private Dictionary<string, int> crashCounts =
         new Dictionary<string, int>();
 
     public int CurrentEpisode => currentEpisode;
+
+    // Track Changing
+    public bool IsNewTrack { get; private set; }
+    public string CurrentTrackName => currentTrack;
+    
 
     //private int currentEpisode;
     //private float timer;
@@ -53,8 +67,11 @@ public class TrackManager : MonoBehaviour
         BeginExperiment();
     }
 
+
+
     void Update()
     {
+        /*IsNewTrack = false;
         if (!running) return;
 
         timer += Time.deltaTime;
@@ -62,7 +79,27 @@ public class TrackManager : MonoBehaviour
         if (timer >= episodeTimeout)
         {
             EndEpisode(false, false);
+        }*/
+        IsNewTrack = false;
+
+        if (!running) return;
+
+        timer += Time.deltaTime;
+        trackTimer += Time.deltaTime;
+
+        // ---- Episode timeout ----  (This is for tracking how many car runs occurred.)
+        if (timer >= episodeTimeout)
+        {
+            EndEpisode(false, false);
         }
+
+        // ---- Track timeout ---  (This is for trakcing the Tracks / Tasks)
+        if (trackTimer >= trackDuration)
+        {
+            Debug.Log("Track time expired -> switching track");
+            ForceTrackChange();
+        }
+
     }
 
     // ==================================================
@@ -75,6 +112,7 @@ public class TrackManager : MonoBehaviour
         currentEpisode = 0;
         tracksUsed = 0;
 
+        LoadNewTrack();
         StartEpisode();
     }
 
@@ -85,6 +123,14 @@ public class TrackManager : MonoBehaviour
         if (mode == RunMode.Train)
         {
              mode_tag = "train";
+        }
+        if (mode == RunMode.Test)
+        {
+            mode_tag = "test";
+        }
+        if (mode == RunMode.Validation)
+        {
+            mode_tag = "train";
         }
 
         string folder =
@@ -100,6 +146,43 @@ public class TrackManager : MonoBehaviour
 
         trackFiles = Directory.GetFiles(folder, "*.json");
     }
+
+    // ==================================================
+    // TRACK CONTROL (NEW)
+    // ==================================================
+    void LoadNewTrack()
+    {
+        if (trackFiles == null || trackFiles.Length == 0)
+        {
+            Debug.LogError("No tracks found.");
+            return;
+        }
+
+        if (tracksUsed >= maxTracksToRun)
+        {
+            FinishExperiment();
+            return;
+        }
+
+        currentTrack = SelectTrack();
+        loader.LoadByPath(currentTrack);
+
+        trackTimer = 0f;
+        episodesOnTrack = 0;
+        tracksUsed++;
+
+        IsNewTrack = true;
+
+        Debug.Log($"Loaded NEW TRACK: {currentTrack}");
+    }
+
+    // Track Change
+    void ForceTrackChange()
+    {
+        LoadNewTrack();
+        StartEpisode();
+    }
+
 
     // ==================================================
     // EPISODE START
@@ -119,6 +202,17 @@ public class TrackManager : MonoBehaviour
             return;
         }
 
+        timer = 0f;
+
+        ResetCar(false);  // Normal Reset
+        rewardManager.ResetReward();
+
+        if (agent != null)
+            agent.BeginExternalEpisode();
+
+        running = true;
+
+        /*
         if (tracksUsed >= maxTracksToRun)
         {
             FinishExperiment();
@@ -129,6 +223,7 @@ public class TrackManager : MonoBehaviour
         timer = 0f;
 
         currentTrack = SelectTrack();
+        IsNewTrack = true;   // The track changed.
 
         loader.LoadByPath(currentTrack);
 
@@ -139,53 +234,90 @@ public class TrackManager : MonoBehaviour
             agent.BeginExternalEpisode();
 
 
-        running = true;
+        running = true;*/
     }
 
+
+    // Select a new Track.
     string SelectTrack()
     {
         List<string> valid = new List<string>();
 
         foreach (string file in trackFiles)
         {
-            if (!crashCounts.ContainsKey(file))
-                crashCounts[file] = 0;
-
-            if (crashCounts[file] < maxCrashesPerTrack)
-                valid.Add(file);
+           
+            //if (!crashCounts.ContainsKey(file))
+             //   crashCounts[file] = 0;
+            crashCounts[file] = 0;
+            // Add the files regardless of crashCounts.
+            valid.Add(file);
+            //if (crashCounts[file] < maxCrashesPerTrack)
+            //    valid.Add(file);
         }
 
-        if (valid.Count == 0)
+        if (currentTrackIndex >= valid.Count)
         {
             Debug.Log("All tracks exhausted.");
             FinishExperiment();
             return null;
         }
 
+        /*
         if (mode == RunMode.Train)
         {
             return valid[Random.Range(0, valid.Count)];
         }
 
         int idx = currentEpisode % valid.Count;
-        return valid[idx];
+        return valid[idx];*/
+        //return valid[Random.Range(0, valid.Count)]; // RANDOM
+        string trackLoading = valid[currentTrackIndex];
+        currentTrackIndex++;
+        return trackLoading;
+
     }
+
+    // Crash Deteector Helper
+    public void HandleCrash()
+    {
+        ResetCar(true);   // BACKUP LOGIC
+
+        EndEpisode(false, true);
+    }
+
 
     // ==================================================
     // RESET CAR
     // ==================================================
-    void ResetCar()
+    void ResetCar(bool crashed = false)
     {
         if (car == null) return;
 
-        car.position += Vector3.up * 0.5f;
-
-        car.rotation = Quaternion.identity;
-
+        // Stop physics first
         if (carRb != null)
         {
             carRb.linearVelocity = Vector3.zero;
             carRb.angularVelocity = Vector3.zero;
+        }
+
+        // ----------------------------------
+        // Move car backward if crashed
+        // ----------------------------------
+        if (crashed)
+        {
+            Vector3 backward = -car.forward;
+
+            // Move back and slightly up
+            car.position += backward * 3f + Vector3.up * 0.5f;
+
+            // Optional: small random rotation to escape bad angles
+            float randomYaw = Random.Range(-20f, 20f);
+            car.rotation = Quaternion.Euler(0, car.eulerAngles.y + randomYaw, 0);
+        }
+        else
+        {
+            // Normal reset (start of episode)
+            car.position += Vector3.up * 0.5f;
         }
     }
 
@@ -217,7 +349,27 @@ public class TrackManager : MonoBehaviour
         ResultLogger.Save(result);
 
         currentEpisode++;
-        tracksUsed++;
+        //tracksUsed++;
+        episodesOnTrack++;   // correct counter
+
+        // ----------------------------------
+        // HARD SWITCH: too many crashes
+        // ----------------------------------
+        if (crashCounts[currentTrack] >= maxCrashesPerTrack)
+        {
+            Debug.Log("Track failed too many times -> restarting track");
+            // LoadNewTrack();
+
+            StartEpisode();
+            return;
+        }
+
+        // ---- Decide: stay or switch track ---- Episode Limit
+        if (episodesOnTrack >= maxEpisodesPerTrack)
+        {
+            Debug.Log("Max episodes per track reached -> switching track");
+            LoadNewTrack();
+        }
 
         StartEpisode();
     }

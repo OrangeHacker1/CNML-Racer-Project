@@ -24,6 +24,17 @@ public class RLCarAgent : MonoBehaviour
     private Vector3 lastPosition;
     private float totalReward;
 
+
+    /// <summary>
+    /// RAY TRACING INFOR
+    /// </summary>
+
+    [Header("Ray Perception")]
+    public int rayCount = 7;
+    public float raySpreadAngle = 90f;
+    public float rayLength = 20f;
+    public LayerMask rayMask;
+
     // ----------------------------------------------------
     // ACTION MEMORY (used only for reward shaping if needed)
     // ----------------------------------------------------
@@ -41,6 +52,10 @@ public class RLCarAgent : MonoBehaviour
         public float reward;
         public bool done;
         public int episode;
+        
+        public bool newEpisode;
+        public bool newTrack;
+        public string trackName;
     }
 
     [Serializable]
@@ -50,6 +65,12 @@ public class RLCarAgent : MonoBehaviour
         public float throttle;  // [0, 1]
         public float brake;     // [0, 1]
     }
+
+    // Flag for changes.
+    private bool isNewEpisode; // This should be triggered every time the track changes.
+
+    public string trackName;
+    public bool newTrack;
 
     // ----------------------------------------------------
     // INITIALIZATION
@@ -105,6 +126,7 @@ public class RLCarAgent : MonoBehaviour
     // ----------------------------------------------------
     // STATE SEND
     // ----------------------------------------------------
+    /* OLD
     void SendState(float reward, bool done)
     {
         StatePacket packet = new StatePacket
@@ -117,11 +139,70 @@ public class RLCarAgent : MonoBehaviour
 
         string json = JsonUtility.ToJson(packet);
         RLServerBridge.Instance.SendState(json);
+    } OLD 2
+    void SendState(float reward, bool done)
+    {
+        StatePacket packet = new StatePacket
+        {
+            state = CollectState(),
+            reward = reward,
+            done = done,
+            episode = trackManager.CurrentEpisode,
+            newEpisode = isNewEpisode, // TRUE on first step
+
+            newTrack = trackManager.IsNewTrack,   // NEW
+            trackName = trackManager.CurrentTrackName // NEW
+        };
+
+        isNewEpisode = false;
+
+        string json = JsonUtility.ToJson(packet);
+        RLServerBridge.Instance.SendState(json);
+    }*/
+    void SendState(float reward, bool done)
+    {
+        StatePacket packet = new StatePacket
+        {
+            state = CollectState(),
+            reward = reward,
+            done = done,
+            episode = trackManager.CurrentEpisode,
+
+            newEpisode = isNewEpisode,
+            newTrack = trackManager.IsNewTrack,
+            trackName = trackManager.CurrentTrackName != null
+                ? System.IO.Path.GetFileNameWithoutExtension(trackManager.CurrentTrackName)
+                : "unknown"
+        };
+
+        isNewEpisode = false;
+
+        string json = JsonUtility.ToJson(packet);
+        RLServerBridge.Instance.SendState(json);
     }
+
 
     // ----------------------------------------------------
     // OBSERVATION SPACE
     // ----------------------------------------------------
+    float[] CollectState()
+    {
+        Rigidbody rb = GetComponent<Rigidbody>();
+
+        float[] rays = GetRayDistances();
+
+        float[] state = new float[rays.Length + 1];
+
+        // Copy rays
+        for (int i = 0; i < rays.Length; i++)
+            state[i] = rays[i];
+
+        // Add speed
+        state[rays.Length] = rb.linearVelocity.magnitude;
+
+        return state;
+    }
+    /*
     float[] CollectState()
     {
         Rigidbody rb = GetComponent<Rigidbody>();
@@ -134,6 +215,52 @@ public class RLCarAgent : MonoBehaviour
             transform.forward.z,
             rb.linearVelocity.magnitude
         };
+    }*/
+
+    // Get Raytracing Distance
+    float[] GetRayDistances()
+    {
+        float[] distances = new float[rayCount];
+
+        float angleStep = raySpreadAngle / (rayCount - 1);
+
+        for (int i = 0; i < rayCount; i++)
+        {
+            float angle = -raySpreadAngle / 2 + angleStep * i;
+
+            Vector3 dir = Quaternion.Euler(0, angle, 0) * transform.forward;
+
+            Ray ray = new Ray(transform.position + Vector3.up * 0.5f, dir);
+
+            if (Physics.Raycast(ray, out RaycastHit hit, rayLength, rayMask))
+            {
+                distances[i] = hit.distance / rayLength;
+            }
+            else
+            {
+                distances[i] = 1f;
+            }
+
+            // Debug visualization
+            Debug.DrawRay(ray.origin, dir * rayLength, Color.red);
+        }
+
+        return distances;
+    }
+
+    // Helper
+    float GetMinRayDistance()
+    {
+        float[] rays = GetRayDistances();
+
+        float min = 1f;
+        for (int i = 0; i < rays.Length; i++)
+        {
+            if (rays[i] < min)
+                min = rays[i];
+        }
+
+        return min;
     }
 
     // ----------------------------------------------------
@@ -168,6 +295,79 @@ public class RLCarAgent : MonoBehaviour
     {
         Rigidbody rb = GetComponent<Rigidbody>();
 
+        Vector3 movement = transform.position - lastPosition;
+        float forwardProgress = Vector3.Dot(movement, transform.forward);
+        float speed = rb.linearVelocity.magnitude;
+
+        float reward = 0f;
+
+        // ----------------------------------
+        // PRIMARY: forward movement
+        // ----------------------------------
+        reward += forwardProgress * 2.0f;
+
+        // ----------------------------------
+        // SECONDARY: speed (reduced weight)
+        // ----------------------------------
+        reward += speed * 0.2f;
+
+        // ----------------------------------
+        // WALL AVOIDANCE (CRITICAL FIX)
+        // ----------------------------------
+        float minRay = GetMinRayDistance();
+        reward -= (1f - minRay) * 1.5f;
+
+        // ----------------------------------
+        // STABILITY (optional but helpful)
+        // ----------------------------------
+        reward -= Mathf.Abs(lastSteer) * 0.05f;
+
+        // ----------------------------------
+        // BACKWARD PENALTY
+        // ----------------------------------
+        if (forwardProgress < 0)
+            reward += forwardProgress * 2.0f;
+
+        return reward;
+    }
+    /*
+    float CalculateReward()
+    {
+        Rigidbody rb = GetComponent<Rigidbody>();
+
+        Vector3 movement = transform.position - lastPosition;
+
+        // Reward ONLY forward movement (not sideways drifting)
+        float forwardProgress = Vector3.Dot(movement, transform.forward);
+
+        float speed = rb.linearVelocity.magnitude;
+
+        float reward = 0f;
+
+        // ----------------------------------
+        // PRIMARY: forward progress
+        // ----------------------------------
+        reward += forwardProgress * 2.0f;
+
+        // ----------------------------------
+        // SECONDARY: speed bonus
+        // ----------------------------------
+        reward += speed * 0.4f;
+
+        // ----------------------------------
+        // SMALL penalty for going backwards
+        // ----------------------------------
+        if (forwardProgress < 0)
+            reward += forwardProgress * 2.0f;
+
+        return reward;
+    }*/
+
+    /*
+    float CalculateReward()
+    {
+        Rigidbody rb = GetComponent<Rigidbody>();
+
         float distance = Vector3.Distance(transform.position, lastPosition);
         float speed = rb.linearVelocity.magnitude;
 
@@ -185,7 +385,7 @@ public class RLCarAgent : MonoBehaviour
         reward -= lastBrake * 0.02f;
 
         return reward;
-    }
+    }*/
 
     // ----------------------------------------------------
     // EPISODE TERMINATION
@@ -205,6 +405,7 @@ public class RLCarAgent : MonoBehaviour
     {
         timer = 0f;
         totalReward = 0f;
+        isNewEpisode = true;
 
         // Tracks are already generated.
         //generator.GenerateTrack();
@@ -225,157 +426,10 @@ public class RLCarAgent : MonoBehaviour
     // ----------------------------------------------------
     private void OnCollisionEnter(Collision collision)
     {
-        totalReward -= 5f;
+        if (collision.gameObject.CompareTag("Barrier"))
+        {
+            totalReward -= 100f; // stronger penalty for hitting walls
+        }
     }
 }
 
-/*using UnityEngine;
-using System;
-
-public class rlcaragent : MonoBehaviour
-{
-    public PrometeoCarController car;
-    public ProceduralTrackGenerator generator;
-    public TrackManager trackmanager;
-
-    [Header("episode")]
-    public float maxepisodetime = 30f;
-
-    private float timer;
-    private Vector3 lastposition;
-    private float totalreward;
-
-    [Serializable]
-    public class StatePacket
-    {
-        public float[] state;
-        public float reward;
-        public bool done;
-        public int episode;
-    }
-
-    [Serializable]
-    public class actionpacket
-    {
-        public float steer;
-        public float throttle;
-        public float brake;
-    }
-
-    private void start()
-    {
-        lastposition = transform.position;
-        beginepisode();
-    }
-
-    private void fixedupdate()
-    {
-        if (!rlserverbridge.instance.connected)
-            return;
-
-        timer += time.fixeddeltatime;
-
-        float reward = calculatereward();
-        bool done = checkdone();
-
-        sendstate(reward, done);
-
-        string msg = rlserverbridge.instance.receiveaction();
-        if (!string.isnullorempty(msg))
-        {
-            actionpacket action = jsonutility.fromjson<actionpacket>(msg);
-            applyaction(action);
-        }
-
-        totalreward += reward;
-        lastposition = transform.position;
-
-        if (done)
-        {
-            endepisode();
-            beginepisode();
-        }
-    }
-
-    void sendstate(float reward, bool done)
-    {
-        statepacket packet = new statepacket();
-        packet.state = collectstate();
-        packet.reward = reward;
-        packet.done = done;
-        packet.episode = trackmanager.currentepisode;
-
-        string json = jsonutility.tojson(packet);
-        rlserverbridge.instance.sendstate(json);
-    }
-
-    float[] collectstate()
-    {
-        rigidbody rb = getcomponent<rigidbody>();
-
-        return new float[]
-        {
-            transform.position.x,
-            transform.position.z,
-            transform.forward.x,
-            transform.forward.z,
-            rb.linearvelocity.magnitude
-        };
-    }
-
-    void applyaction(actionpacket a)
-    {
-        car.steerinput = mathf.clamp(a.steer, -1f, 1f);
-        car.throttleinput = mathf.clamp01(a.throttle);
-        car.brakeinput = mathf.clamp01(a.brake);
-    }
-
-    float calculatereward()
-    {
-        float distance = Vector3.distance(transform.position, lastposition);
-        float speed = getcomponent<rigidbody>().linearvelocity.magnitude;
-
-        float reward = 0f;
-
-        reward += distance * 0.5f;
-        reward += speed * 0.1f;
-
-        reward -= mathf.abs(car.throttleinput) * 0.02f;
-        reward -= mathf.abs(car.brakeinput) * 0.03f;
-
-        return reward;
-    }
-
-    bool checkdone()
-    {
-        if (timer > maxepisodetime)
-            return true;
-
-        if (transform.position.y < -2f)
-            return true;
-
-        return false;
-    }
-
-    void beginepisode()
-    {
-        timer = 0f;
-        totalreward = 0f;
-
-        generator.generatetrack();
-        transform.position += vector3.up * 0.2f;
-
-        lastposition = transform.position;
-    }
-
-    void endepisode()
-    {
-        trackmanager.logepisode(totalreward);
-    }
-
-    private void oncollisionenter(Collision collision)
-    {
-        totalreward -= 5f;
-    }
-}
-*/
